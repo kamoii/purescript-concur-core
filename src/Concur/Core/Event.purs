@@ -1,17 +1,14 @@
 module Concur.Core.Event where
 
-import Control.Applicative (pure)
-import Control.Bind (bind, discard, (=<<))
-import Control.Monad (when)
-import Data.Eq ((/=))
+import Prelude
+
+import Control.Alt ((<|>))
 import Data.FoldableWithIndex (traverseWithIndex_)
-import Data.Function (($))
-import Data.Functor (class Functor)
 import Data.Maybe (Maybe(..), maybe)
 import Data.Traversable (sequence_)
 import Data.TraversableWithIndex (traverseWithIndex)
-import Data.Unit (Unit, unit)
 import Effect (Effect)
+import Effect.Class (class MonadEffect)
 import Effect.Ref as Ref
 
 -- TODO: Generalise monad to m
@@ -27,9 +24,47 @@ effMap :: forall a b. Observer a -> (a -> Effect b) -> Observer b
 effMap (Observer g) f = Observer \cb -> g \a -> cb =<< f a
 
 -- TODO: Monadic chaining for observer
--- instance observeApply :: Apply Observer where
---   -- apply :: forall a b. f (a -> b) -> f a -> f b
---   apply (Observer f) (Observer a) = Observer \cb -> f \cf' ->
+
+-- Mutable な refenence を使う以外に思い浮ばない...
+-- 注意するケースとして Observer が実際に非同期ではなく、則継続が呼ばれる場合
+-- そもそも canceller の semantics を明確にしておく必要がある
+-- 一度処理が終わり継続が呼ばれた後は効果をなさない？
+instance observeApply :: Apply Observer where
+  -- apply :: forall a b. f (a -> b) -> f a -> f b
+  apply (Observer f) (Observer a) =
+    Observer \cb -> do
+      ref <- Ref.new Nothing
+      fc <- f \vf -> do
+        ac <- a (cb <<< vf)
+        Ref.write (Just ac) ref
+      -- もし f の実態が同期的な処理の場合、既に Just ac が設定されている。
+      -- そのため Nothing の場合のみ fc を設定する
+      Ref.modify_ (_ <|> Just fc) ref
+      pure $ maybe (pure unit) identity =<< Ref.read ref
+
+instance observerApplicative :: Applicative Observer where
+  pure a = Observer \cb -> (cb a) *> pure (pure unit)
+
+instance observerBind :: Bind Observer where
+  bind (Observer a) f =
+    Observer \cb -> do
+      ref <- Ref.new Nothing
+      ac <- a \va -> do
+        let Observer b = f va
+        bc <- b cb
+        Ref.write (Just bc) ref
+      -- もし f の実態が同期的な処理の場合、既に Just ac が設定されている。
+      -- そのため Nothing の場合のみ fc を設定する
+      Ref.modify_ (_ <|> Just ac) ref
+      pure $ maybe (pure unit) identity =<< Ref.read ref
+
+instance observerMonad :: Monad Observer
+
+instance observerMonadEffect :: MonadEffect Observer where
+  liftEffect eff =
+    Observer \cb -> do
+      cb =<< eff
+      pure $ pure unit
 
 observe :: forall a. Observer a -> (a -> Effect Unit) -> Effect (Effect Unit)
 observe (Observer f) = f
