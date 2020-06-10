@@ -16,21 +16,23 @@ import Data.Either (Either(..))
 import Data.FoldableWithIndex (foldlWithIndex, foldrWithIndex)
 import Data.Maybe (Maybe(Nothing, Just), fromMaybe)
 import Data.Semigroup.Foldable (foldMap1)
+import Data.Traversable (sequence_)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.AVar (empty, tryPut, tryTake) as EVar
-import Effect.Aff (Aff, effectCanceler, makeAff, never, runAff_)
+import Effect.Aff (Aff, effectCanceler, killFiber, makeAff, never, runAff)
 import Effect.Aff.AVar (take) as AVar
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect)
 import Effect.Console (log)
-import Effect.Exception (Error)
+import Effect.Exception (Error, error)
 
 type WidgetStepRecord v a
-  = {view :: v, cont :: Aff a}
+  = {view :: v, cont :: Aff a, cancel :: Aff Unit }
 
 data WidgetStep v a
   = WidgetStepEff (Effect a)
+  | WidgetStepAff (Aff a)
   | WidgetStepView (WidgetStepRecord v a)
 
 -- unWidgetStep ::
@@ -42,10 +44,11 @@ data WidgetStep v a
 -- derive instance widgetStepFunctor :: Functor (WidgetStep v)
 instance functorWidgetStep :: Functor (WidgetStep v) where
   map f (WidgetStepEff e) = WidgetStepEff (map f e)
+  map f (WidgetStepAff a) = WidgetStepAff (map f a)
   map f (WidgetStepView w) = WidgetStepView (w { cont = map f w.cont })
 
 displayStep :: forall a v. v -> WidgetStep v a
-displayStep v = WidgetStepView { view: v, cont: never }
+displayStep v = WidgetStepView { view: v, cont: never, cancel: pure unit }
 
 newtype Widget v a
   = Widget (Free (WidgetStep v) a)
@@ -96,6 +99,9 @@ instance widgetMultiAlternative ::
         Left (WidgetStepEff eff) -> wrap $ WidgetStepEff do
             w <- eff
             pure $ combine $ NEA.cons' w x.tail
+        Left (WidgetStepAff aff) -> wrap $ WidgetStepAff do
+            w <- aff
+            pure $ combine $ NEA.cons' w x.tail
         Left (WidgetStepView wsr) -> combineInner (NEA.singleton wsr) x.tail
 
     combineInner ::
@@ -117,6 +123,7 @@ instance widgetMultiAlternative ::
     combineViewsConts ws = wrap $ WidgetStepView
       { view: foldMap1 _.view ws
       , cont: merge ws (map _.cont ws)
+      , cancel: sequence_ (map _.cancel ws)
       }
 
     combineInner1 ::
@@ -131,6 +138,9 @@ instance widgetMultiAlternative ::
         Right a -> pure a
         Left (WidgetStepEff eff) -> wrap $ WidgetStepEff do
             w <- eff
+            pure $ combineInner1 ws $ NEA.cons' w x.tail
+        Left (WidgetStepAff aff) -> wrap $ WidgetStepAff do
+            w <- aff
             pure $ combineInner1 ws $ NEA.cons' w x.tail
         Left (WidgetStepView wsr) -> combineInner (NEA.snoc ws wsr) x.tail
 
@@ -198,6 +208,7 @@ mapView f (Widget w) = Widget (hoistFree (mapViewStep f) w)
 
 mapViewStep :: forall v1 v2 a. (v1 -> v2) -> WidgetStep v1 a -> WidgetStep v2 a
 mapViewStep f (WidgetStepEff e) = WidgetStepEff e
+mapViewStep f (WidgetStepAff a) = WidgetStepAff a
 mapViewStep f (WidgetStepView ws) = WidgetStepView ( ws { view = f ws.view })
 
 display :: forall a v. v -> Widget v a
@@ -218,12 +229,16 @@ affAction ::
   Widget v a
 affAction v aff = Widget $ wrap $ WidgetStepEff do
   var <- EVar.empty
-  runAff_ (handler var) aff
+  fiber <- runAff (handler var) aff
   -- Detect synchronous resolution
   ma <- EVar.tryTake var
   pure case ma of
     Just a -> pure a
-    Nothing -> liftF $ WidgetStepView { view: v, cont: AVar.take var }
+    Nothing -> liftF $ WidgetStepView
+      { view: v
+      , cont: AVar.take var
+      , cancel: killFiber (error "WidgetCancel") fiber
+      }
   where
   -- TODO: allow client code to handle aff failures
   handler _ (Left e) = log ("Aff failed - " <> show e)

@@ -13,6 +13,7 @@ import Control.Monad.Free (Free, wrap, resume)
 import Control.Parallel.Class (parallel, sequential)
 import Control.Plus (alt)
 import Data.Either (Either(..))
+import Data.Unit (unit)
 import Effect (Effect)
 import Effect.AVar (empty, tryPut) as EVar
 import Effect.Aff.AVar (take) as AVar
@@ -36,16 +37,19 @@ mkNodeWidget' mkView w = case resume w of
   Left (WidgetStepEff eff) -> wrap $ WidgetStepEff do
       w' <- eff
       pure $ mkNodeWidget' mkView w'
+  Left (WidgetStepAff aff) -> wrap $ WidgetStepAff do
+      w' <- aff
+      pure $ mkNodeWidget' mkView w'
   Left (WidgetStepView wsr) -> wrap $ WidgetStepEff do
       var <- EVar.empty
       let eventHandler = (\a -> void (EVar.tryPut (pure a) var))
-      let cont' = sequential (alt (parallel (liftAff (AVar.take var)))
-                                  (parallel (map (mkNodeWidget' mkView) wsr.cont))
-                             )
-      pure $ wrap $ WidgetStepView
-        { view: mkView eventHandler wsr.view
-        , cont: cont'
-        }
+      let view = mkView eventHandler wsr.view
+      let cont = sequential (alt (parallel (liftAff (AVar.take var)))
+                                 (parallel (map (mkNodeWidget' mkView) wsr.cont))
+                            )
+      let cancel = wsr.cancel
+      pure $ wrap $ WidgetStepView { view, cont, cancel }
+
 -- | Construct a widget with just props
 mkLeafWidget ::
   forall a v.
@@ -56,4 +60,5 @@ mkLeafWidget mkView = Widget $ wrap $ WidgetStepEff do
   pure $ wrap $ WidgetStepView
     { view: mkView (\a -> void (EVar.tryPut (pure a) var))
     , cont: liftAff (AVar.take var)
+    , cancel: pure unit
     }
