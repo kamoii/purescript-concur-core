@@ -2,27 +2,50 @@ module Test.Utils where
 
 import Prelude
 
-import Concur.Core (Widget)
-import Concur.Core.Types (WidgetStep(..), unWidget)
-import Control.Monad.Free (runFreeM)
-import Control.Monad.Writer.Trans (runWriterT, tell)
-import Data.Array (singleton)
-import Data.Tuple (Tuple(..))
-import Effect.Aff (Aff)
-import Effect.Aff.Class (liftAff)
-import Effect.Class (liftEffect)
+import Concur.Core.Types (Widget, unWidget)
+import Data.Either (Either(..))
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
+import Data.Maybe (Maybe)
+import Effect.Aff (Aff, Canceler(..), makeAff)
+import Effect.Ref as Ref
+import Effect.Timer (setTimeout)
 
+data WidgetOp v a
+  = Result a
+  | InitialView (Maybe v)
+  | UpdateView v
 
--- Evalutates Widget to Aff
--- Be carefull that never ending Widget will convert to never ending Aff.
-runWidgetAsAff :: forall v a. Widget v a -> Aff { result :: a, views :: Array v }
-runWidgetAsAff widget = do
-  Tuple result views <- runWriterT $ runFreeM interpret (unWidget widget)
-  pure { result, views }
+derive instance eqWidgetOp :: (Eq v, Eq a) => Eq (WidgetOp v a)
+
+derive instance genericWidgetOp :: Generic (WidgetOp v a) _
+
+instance showWidgetOp :: (Show v, Show a) => Show (WidgetOp v a) where
+  show= genericShow
+
+runWidgetAsAff
+  :: forall v a
+   . Int
+  -> Widget v a
+  -> Aff (Array (WidgetOp v a))
+runWidgetAsAff timeout widget =
+  makeAff \affCb -> do
+    end <- Ref.new false
+    ops <- Ref.new []
+    let doneCb = affCb <<< Right =<< Ref.read ops
+    _ <- setTimeout timeout doneCb
+    iv <- unWidget widget $ handler doneCb end ops
+    Ref.modify_ (_ <> [InitialView iv]) ops
+    ifM (Ref.read end) doneCb (Ref.write true end)
+    -- Currently we can't cancel a widget
+    pure noopCanceler
   where
-    interpret (WidgetStepEff eff) =
-      liftEffect eff
+    noopCanceler =
+      Canceler (const $ pure unit)
 
-    interpret (WidgetStepView rec) = do
-      tell $ singleton rec.view
-      liftAff rec.cont
+    handler doneCb end ops = case _ of
+      Left v -> do
+        Ref.modify_ (_ <> [UpdateView v]) ops
+      Right a -> do
+        Ref.modify_ (_ <> [Result a]) ops
+        ifM (Ref.read end) doneCb (Ref.write true end)
