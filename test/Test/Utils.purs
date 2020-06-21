@@ -2,12 +2,12 @@ module Test.Utils where
 
 import Prelude
 
-import Concur.Core.Types (Widget, unWidget)
+import Concur.Core.Types (Widget, affAction, unWidget)
 import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Maybe (Maybe)
-import Effect.Aff (Aff, Canceler(..), makeAff)
+import Data.Maybe (Maybe(..))
+import Effect.Aff (Aff, Canceler(..), makeAff, runAff_)
 import Effect.Ref as Ref
 import Effect.Timer (setTimeout)
 
@@ -49,3 +49,13 @@ runWidgetAsAff timeout widget =
       Right a -> do
         Ref.modify_ (_ <> [Result a]) ops
         ifM (Ref.read end) doneCb (Ref.write true end)
+
+
+affWidget :: forall v a. Monoid v => Aff a -> Widget v a
+affWidget aff =
+  affAction \cb -> do
+    let cont = case _ of
+          Left e -> pure unit
+          Right a -> cb (Right a)
+    runAff_ cont aff
+    pure $ Just mempty

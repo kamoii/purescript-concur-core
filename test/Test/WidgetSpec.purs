@@ -16,13 +16,38 @@ widgetSpec :: Spec Unit
 widgetSpec =
   describe "Widget" do
     displaySpec
+    liftEfectfSpec
 
 displaySpec :: Spec Unit
 displaySpec =
   describe "display" do
     it "should display initial view" do
-      ops <- runWidgetAsAff 10 $ display "foo" $> unit
-      ops `shouldEqual` [ InitialView (Just "foo") ]
+      ops <- runWidgetAsAff 100 do
+        display "foo" $> unit
+      ops `shouldEqual`
+        [ InitialView (Just "foo") ]
+
+-- TODO: these test chould be wrong.
+liftEfectfSpec :: Spec Unit
+liftEfectfSpec = do
+  describe "liftEffect" do
+    it "can make a widget that do nothing" do
+      ops <- runWidgetAsAff 100 do
+        liftEffect $ pure unit
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView Nothing
+        , Result unit
+        ]
+
+    it "shouldn't mess the initial view and updat views order" do
+      ops <- runWidgetAsAff 100 do
+        liftEffect $ pure unit
+        display "foo"
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView Nothing
+        , UpdateView "foo"
+        ]
+
 
     -- describe "orr" do
     --   it "should cancel running effects when the widget returns a value" do
