@@ -93,7 +93,7 @@ instance widgetMultiAlternative :: (Monoid v) => MultiAlternative (Widget v) whe
               Nothing -> pure unit
               Just vs' -> do
                 Ref.write vs' viewsRef
-                case sequence vs of
+                case sequence vs' of
                   Nothing -> pure unit
                   Just arr -> cb $ Left $ fold arr
     vs <- traverseWithIndex (\i f -> f (mkCb i)) (unWidgetArray wss)
