@@ -2,7 +2,7 @@ module Test.WidgetSpec (widgetSpec) where
 
 import Prelude
 
-import Concur.Core.Types (affAction, display, effAction)
+import Concur.Core.Types (affAction, andd, display, effAction)
 import Control.MultiAlternative (orr)
 import Data.Maybe (Maybe(..))
 import Effect.Aff (Milliseconds(..), delay, never)
@@ -19,7 +19,7 @@ widgetSpec =
     effSpec
     affSpec
     orrSpec
-    orrAndAffSpec
+    anddSpec
 
 displaySpec :: Spec Unit
 displaySpec =
@@ -96,9 +96,6 @@ orrSpec = do
         , UpdateView "foo"
         ]
 
-orrAndAffSpec :: Spec Unit
-orrAndAffSpec = do
-  describe "orr and aff" do
     it "TODO: name this test" do
       ops <- runWidgetAsAff 100 do
         orr
@@ -124,6 +121,53 @@ orrAndAffSpec = do
         , Result unit
         ]
 
+    it "should return thee first terminated child widget's value" do
+      ops <- runWidgetAsAff 100 do
+        orr
+          [ affWidget (Just "a") $ delay (Milliseconds 10.0) $> "a"
+          , affWidget (Just "b") $ delay (Milliseconds 20.0) $> "b"
+          ]
+      (ops :: Array (WidgetOp String String)) `shouldEqual`
+        [ InitialView (Just "ab")
+        , Result "a"
+        ]
+
+anddSpec :: Spec Unit
+anddSpec = do
+  describe "andd" do
+    it "waits till all of its child terminates" do
+      ops <- runWidgetAsAff 100 do
+        andd
+          [ affWidget (Just "a") $ delay (Milliseconds 10.0) $> "a"
+          , affWidget (Just "b") $ delay (Milliseconds 20.0) $> "b"
+          ]
+      (ops :: Array (WidgetOp String (Array String))) `shouldEqual`
+        [ InitialView (Just "ab")
+        , Result [ "a", "b" ]
+        ]
+
+    it "will not terminate if all of its child don't terminate" do
+      ops <- runWidgetAsAff 100 do
+        void $ andd
+          [ display "a"
+          , display "b"
+          ]
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView (Just "ab")
+        ]
+
+    it "will not terminate if more than one of its child doesn't terminate" do
+      ops <- runWidgetAsAff 100 do
+        void $ andd
+          [ display "a"
+          , do
+              affWidget (Just "b") $ delay (Milliseconds 10.0)
+              affWidget (Just "c") $ delay (Milliseconds 10.0)
+          ]
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView (Just "ab")
+        , UpdateView "ac"
+        ]
 
     -- describe "orr" do
     --   it "should cancel running effects when the widget returns a value" do
