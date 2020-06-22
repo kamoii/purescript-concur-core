@@ -2,21 +2,24 @@ module Test.WidgetSpec (widgetSpec) where
 
 import Prelude
 
-import Concur.Core.Types (affAction, display)
+import Concur.Core.Types (affAction, display, effAction)
 import Control.MultiAlternative (orr)
 import Data.Maybe (Maybe(..))
-import Effect.Aff (delay, never)
+import Effect.Aff (Milliseconds(..), delay, never)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, shouldReturn)
-import Test.Utils (WidgetOp(..), runWidgetAsAff)
+import Test.Utils (WidgetOp(..), affWidget, runWidgetAsAff)
 
 widgetSpec :: Spec Unit
 widgetSpec =
   describe "Widget" do
     displaySpec
-    liftEfectfSpec
+    effSpec
+    affSpec
+    orrSpec
+    orrAndAffSpec
 
 displaySpec :: Spec Unit
 displaySpec =
@@ -28,9 +31,9 @@ displaySpec =
         [ InitialView (Just "foo") ]
 
 -- TODO: these test chould be wrong.
-liftEfectfSpec :: Spec Unit
-liftEfectfSpec = do
-  describe "liftEffect" do
+effSpec :: Spec Unit
+effSpec = do
+  describe "eff" do
     it "can make a widget that do nothing" do
       ops <- runWidgetAsAff 100 do
         liftEffect $ pure unit
@@ -41,11 +44,84 @@ liftEfectfSpec = do
 
     it "shouldn't mess the initial view and updat views order" do
       ops <- runWidgetAsAff 100 do
-        liftEffect $ pure unit
+        txt <- liftEffect $ pure "foo"
+        display txt
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView Nothing
+        , UpdateView "foo"
+        ]
+
+affSpec :: Spec Unit
+affSpec = do
+  describe "aff" do
+    it "TODO: name this test" do
+      ops <- runWidgetAsAff 100 do
+        affWidget (Just "foo") $ delay (Milliseconds 10.0) $> 1
+      (ops :: Array (WidgetOp String Int)) `shouldEqual`
+        [ InitialView (Just "foo")
+        , Result 1
+        ]
+
+orrSpec :: Spec Unit
+orrSpec = do
+  describe "orr" do
+    it "TODO: name this test" do
+      ops <- runWidgetAsAff 100 do
+        orr
+          [ display "a"
+          , display "b"
+          , display "c"
+          ]
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView (Just "abc") ]
+
+    it "TODO: name this test" do
+      ops <- runWidgetAsAff 100 do
+        orr
+          [ display "a"
+          , orr [ display "b", display "c" ]
+          ]
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView (Just "abc") ]
+
+    it "TODO: name this test" do
+      ops <- runWidgetAsAff 100 do
+        orr
+          [ display "a"
+          , effAction $ pure unit
+          ]
         display "foo"
       (ops :: Array (WidgetOp String Unit)) `shouldEqual`
         [ InitialView Nothing
         , UpdateView "foo"
+        ]
+
+orrAndAffSpec :: Spec Unit
+orrAndAffSpec = do
+  describe "orr and aff" do
+    it "TODO: name this test" do
+      ops <- runWidgetAsAff 100 do
+        orr
+          [ display "a"
+          , affWidget (Just "b") $ delay (Milliseconds 10.0)
+          ]
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView (Just "ab")
+        , Result unit
+        ]
+
+    it "TODO: name this test" do
+      ops <- runWidgetAsAff 100 do
+        orr
+          [ display "a"
+          , do
+              affWidget (Just "b") $ delay (Milliseconds 10.0)
+              affWidget (Just "c") $ delay (Milliseconds 10.0)
+          ]
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView (Just "ab")
+        , UpdateView "ac"
+        , Result unit
         ]
 
 

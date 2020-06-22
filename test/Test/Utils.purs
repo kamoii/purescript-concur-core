@@ -6,7 +6,7 @@ import Concur.Core.Types (Widget, affAction, unWidget)
 import Data.Either (Either(..))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe)
 import Effect.Aff (Aff, Canceler(..), makeAff, runAff_)
 import Effect.Ref as Ref
 import Effect.Timer (setTimeout)
@@ -51,11 +51,11 @@ runWidgetAsAff timeout widget =
         ifM (Ref.read end) doneCb (Ref.write true end)
 
 
-affWidget :: forall v a. Monoid v => Aff a -> Widget v a
-affWidget aff =
+affWidget :: forall v a. Monoid v => Maybe v -> Aff a -> Widget v a
+affWidget view aff =
   affAction \cb -> do
     let cont = case _ of
           Left e -> pure unit
           Right a -> cb (Right a)
     runAff_ cont aff
-    pure $ Just mempty
+    pure view
