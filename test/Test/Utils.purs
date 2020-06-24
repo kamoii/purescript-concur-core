@@ -8,6 +8,7 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Data.Maybe (Maybe)
 import Effect.Aff (Aff, Canceler(..), makeAff, runAff_)
+import Effect.Aff.Compat (mkEffectFn1, runEffectFn1)
 import Effect.Ref as Ref
 import Effect.Timer (setTimeout)
 
@@ -34,7 +35,7 @@ runWidgetAsAff timeout widget =
     ops <- Ref.new []
     let doneCb = affCb <<< Right =<< Ref.read ops
     _ <- setTimeout timeout doneCb
-    iv <- unWidget widget $ handler doneCb end ops
+    iv <- unWidget widget $ mkEffectFn1 $ handler doneCb end ops
     Ref.modify_ (_ <> [InitialView iv]) ops
     ifM (Ref.read end) doneCb (Ref.write true end)
     -- Currently we can't cancel a widget
@@ -56,6 +57,6 @@ affWidget view aff =
   affAction \cb -> do
     let cont = case _ of
           Left e -> pure unit
-          Right a -> cb (Right a)
+          Right a -> runEffectFn1 cb (Right a)
     runAff_ cont aff
     pure view
