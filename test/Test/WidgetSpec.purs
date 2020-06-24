@@ -143,6 +143,7 @@ anddSpec = do
           ]
       (ops :: Array (WidgetOp String (Array String))) `shouldEqual`
         [ InitialView (Just "ab")
+        , UpdateView "b"
         , Result [ "a", "b" ]
         ]
 
@@ -167,6 +168,7 @@ anddSpec = do
       (ops :: Array (WidgetOp String Unit)) `shouldEqual`
         [ InitialView (Just "ab")
         , UpdateView "ac"
+        , UpdateView "a"
         ]
 
     -- describe "orr" do
