@@ -54,7 +54,7 @@ effSpec = do
 affSpec :: Spec Unit
 affSpec = do
   describe "aff" do
-    it "TODO: name this test" do
+    it "should handle simple async effect" do
       ops <- runWidgetAsAff 100 do
         affWidget (Just "foo") $ delay (Milliseconds 10.0) $> 1
       (ops :: Array (WidgetOp String Int)) `shouldEqual`
