@@ -3,6 +3,7 @@ module Test.WidgetSpec (widgetSpec) where
 import Prelude
 
 import Concur.Core.Types (affAction, andd, display, effAction)
+import Control.Alt ((<|>))
 import Control.MultiAlternative (orr)
 import Data.Maybe (Maybe(..))
 import Effect.Aff (Milliseconds(..), delay, never)
@@ -15,11 +16,39 @@ import Test.Utils (WidgetOp(..), affWidget, runWidgetAsAff)
 widgetSpec :: Spec Unit
 widgetSpec =
   describe "Widget" do
+    semigroupSpec
+    monoidSpec
     displaySpec
     effSpec
     affSpec
     orrSpec
     anddSpec
+
+semigroupSpec :: Spec Unit
+semigroupSpec =
+  describe "Semigroup instance" do
+    it "should obey associativity law" do
+      let w0 = display "a"
+      let w1 = affWidget (Just "b") $ delay (Milliseconds 10.0)
+      let w2 = effAction (pure unit) *> display "c"
+      ops0 <- runWidgetAsAff 100 $ (w0 <> w1) <> w2
+      ops1 <- runWidgetAsAff 100 $ w0 <> (w1 <> w2)
+      ops0 `shouldEqual` ops1
+
+monoidSpec :: Spec Unit
+monoidSpec =
+  describe "Monoid instance" do
+    let w = display "a" <|> affWidget (Just "b") (delay (Milliseconds 10.0))
+    it "should obey left unit law" do
+      ops0 <- runWidgetAsAff 100 $ w
+      ops1 <- runWidgetAsAff 100 $ mempty <> w
+      ops0 `shouldEqual` ops1
+
+    it "should obey right unit law" do
+      ops0 <- runWidgetAsAff 100 $ w
+      ops1 <- runWidgetAsAff 100 $ w <> mempty
+      ops0 `shouldEqual` ops1
+
 
 displaySpec :: Spec Unit
 displaySpec =
