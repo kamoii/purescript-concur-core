@@ -21,6 +21,7 @@ widgetSpec =
     monoidSpec
     altSpec
     plusSpec
+    alternativeSpec
     displaySpec
     effSpec
     affSpec
@@ -87,6 +88,22 @@ plusSpec =
     it "should obey annihilation law" do
       ops0 <- runWidgetAsAff 100 $ (empty :: Widget String _)
       ops1 <- runWidgetAsAff 100 $ (_ + 3) <$> empty
+      ops0 `shouldEqual` ops1
+
+alternativeSpec :: Spec Unit
+alternativeSpec =
+  describe "Alternative instance" do
+    it "should obey distributivity law" do
+      let w0 = display "a" $> (_ + 1)
+      let w1 = affWidget (Just "b") (delay (Milliseconds 10.0)) $> (_ + 2)
+      let w2 = effAction (pure unit) $> 3
+      ops0 <- runWidgetAsAff 100 $ (w0 <|> w1) <*> w2
+      ops1 <- runWidgetAsAff 100 $ (w0 <*> w2) <|> (w1 <*> w2)
+      ops0 `shouldEqual` ops1
+
+    it "should obey annihilation law" do
+      ops0 <- runWidgetAsAff 100 $ (empty :: Widget String Unit)
+      ops1 <- runWidgetAsAff 100 $ empty <*> display "a"
       ops0 `shouldEqual` ops1
 
 
