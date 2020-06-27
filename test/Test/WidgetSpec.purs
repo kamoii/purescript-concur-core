@@ -2,9 +2,10 @@ module Test.WidgetSpec (widgetSpec) where
 
 import Prelude
 
-import Concur.Core.Types (affAction, andd, display, effAction)
+import Concur.Core.Types (Widget(..), affAction, andd, display, effAction)
 import Control.Alt ((<|>))
 import Control.MultiAlternative (orr)
+import Control.Plus (empty)
 import Data.Maybe (Maybe(..))
 import Effect.Aff (Milliseconds(..), delay, never)
 import Effect.Class (liftEffect)
@@ -18,6 +19,8 @@ widgetSpec =
   describe "Widget" do
     semigroupSpec
     monoidSpec
+    altSpec
+    plusSpec
     displaySpec
     effSpec
     affSpec
@@ -47,6 +50,43 @@ monoidSpec =
     it "should obey right unit law" do
       ops0 <- runWidgetAsAff 100 $ w
       ops1 <- runWidgetAsAff 100 $ w <> mempty
+      ops0 `shouldEqual` ops1
+
+altSpec :: Spec Unit
+altSpec =
+  describe "Alt instance" do
+    it "should obey associativity law" do
+      let w0 = display "a"
+      let w1 = affWidget (Just "b") $ delay (Milliseconds 10.0)
+      let w2 = effAction (pure unit) *> display "c"
+      ops0 <- runWidgetAsAff 100 $ (w0 <|> w1) <|> w2
+      ops1 <- runWidgetAsAff 100 $ w0 <|> (w1 <|> w2)
+      ops0 `shouldEqual` ops1
+
+    it "should obey distributivity law" do
+      let w0 = display "a" $> 1
+      let w1 = affWidget (Just "b") (delay (Milliseconds 10.0)) $> 2
+      ops0 <- runWidgetAsAff 100 $ (_ + 3) <$> (w0 <|> w1)
+      ops1 <- runWidgetAsAff 100 $ ((_ + 3) <$> w0) <|> ((_ + 3) <$> w1)
+      ops0 `shouldEqual` ops1
+
+plusSpec :: Spec Unit
+plusSpec =
+  describe "Plus instance" do
+    let w = display "a" <|> affWidget (Just "b") (delay (Milliseconds 10.0))
+    it "should obey left identity law" do
+      ops0 <- runWidgetAsAff 100 $ w
+      ops1 <- runWidgetAsAff 100 $ empty <|> w
+      ops0 `shouldEqual` ops1
+
+    it "should obey right identity law" do
+      ops0 <- runWidgetAsAff 100 $ w
+      ops1 <- runWidgetAsAff 100 $ w <|> empty
+      ops0 `shouldEqual` ops1
+
+    it "should obey annihilation law" do
+      ops0 <- runWidgetAsAff 100 $ (empty :: Widget String _)
+      ops1 <- runWidgetAsAff 100 $ (_ + 3) <$> empty
       ops0 `shouldEqual` ops1
 
 
