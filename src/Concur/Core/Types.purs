@@ -115,7 +115,7 @@ instance widgetAlt :: (Monoid v) => Alt (Widget v) where
   alt = append
 
 instance widgetPlus :: (Monoid v) => Plus (Widget v) where
-  empty = Widget \cb -> pure Nothing
+  empty = Widget \cb -> pure $ Just mempty
 
 instance widgetAlternative :: (Monoid v) => Alternative (Widget v)
 
