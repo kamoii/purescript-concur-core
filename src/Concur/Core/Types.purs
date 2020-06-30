@@ -9,7 +9,8 @@ import Control.Plus (class Alt, class Plus, alt, empty)
 import Control.ShiftMap (class ShiftMap)
 import Data.Array (fold)
 import Data.Array as A
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
+import Data.Foldable (traverse_)
 import Data.FoldableWithIndex (foldrWithIndex)
 import Data.Maybe (Maybe(Just, Nothing), fromMaybe)
 import Data.Traversable (sequence)
@@ -159,19 +160,28 @@ effAction eff = Widget \cb -> do
   pure Nothing
 
 -- Async aff
--- Make sure that the callback is called asyncnourously
+-- Make sure that the callback is called asyncnourously.
+-- Any synchronuse callback should be called before any asyncnourous call are made.
+-- There for we are calling setTimeout 0 *before* evaluating *handler*.
+-- Only the last synchronusely called view udpate has effect
+-- since there is no meaning of updateing the view synchronusely.
 affAction ::
   forall a v.
   WithHandler v a ->
   Widget v a
 affAction handler = Widget \cb -> do
-  ref <- Ref.new false
+  stillSync <- Ref.new true
+  syncView <- Ref.new Nothing
+  syncResult <- Ref.new Nothing
+  void $ setTimeout 0 do
+    Ref.read syncView >>= traverse_ (runEffectFn1 cb <<< Left)
+    Ref.read syncResult >>= traverse_ (runEffectFn1 cb <<< Right)
   view <- handler $ mkEffectFn1 \va -> do
-    ifM (Ref.read ref)
+    ifM (Ref.read stillSync)
+      do either (flip Ref.write syncView <<< Just) (flip Ref.write syncResult <<< Just) va
       do runEffectFn1 cb va
-      do void $ setTimeout 0 $ runEffectFn1 cb va
     pure unit
-  Ref.write true ref
+  Ref.write false stillSync
   pure view
 
 -- Async callback
