@@ -6,10 +6,13 @@ import Concur.Core.Types (Widget(..), affAction, andd, display, effAction)
 import Control.Alt ((<|>))
 import Control.MultiAlternative (orr)
 import Control.Plus (empty)
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect.Aff (Milliseconds(..), delay, never)
+import Effect.Aff.Compat (runEffectFn1)
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
+import Effect.Timer (setTimeout)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, shouldReturn)
 import Test.Utils (WidgetOp(..), affWidget, runWidgetAsAff)
@@ -154,6 +157,21 @@ affSpec = do
       (ops :: Array (WidgetOp String Int)) `shouldEqual`
         [ InitialView (Just "foo")
         , Result 1
+        ]
+
+    it "should handle sync-and-asynchronous callback order correctly" do
+      ops <- runWidgetAsAff 100 do
+        affAction \cb -> do
+          -- There is no measing of updaing view with "b"
+          -- since it the view will syncchronously updated with "c" right after
+          runEffectFn1 cb $ Left "b"
+          void $ setTimeout 0 $ runEffectFn1 cb $ Left "d"
+          runEffectFn1 cb $ Left "c"
+          pure $ Just "a"
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView (Just "a")
+        , UpdateView "c"
+        , UpdateView "d"
         ]
 
 orrSpec :: Spec Unit
