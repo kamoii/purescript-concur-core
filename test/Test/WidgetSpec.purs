@@ -140,6 +140,14 @@ effSpec = do
 affSpec :: Spec Unit
 affSpec = do
   describe "aff" do
+    it "can make a widget that do nothing" do
+      ops <- runWidgetAsAff 100 do
+        affWidget Nothing $ pure unit
+      (ops :: Array (WidgetOp String Unit)) `shouldEqual`
+        [ InitialView Nothing
+        , Result unit
+        ]
+
     it "should handle simple async effect" do
       ops <- runWidgetAsAff 100 do
         affWidget (Just "foo") $ delay (Milliseconds 10.0) $> 1

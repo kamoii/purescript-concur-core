@@ -3,6 +3,7 @@ module Concur.Core.Types where
 import Prelude
 
 import Control.Alternative (class Alternative)
+import Control.Bind (ifM)
 import Control.MultiAlternative (class MultiAlternative, orr)
 import Control.Plus (class Alt, class Plus, alt, empty)
 import Control.ShiftMap (class ShiftMap)
@@ -15,8 +16,11 @@ import Data.Traversable (sequence)
 import Data.TraversableWithIndex (traverseWithIndex)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
+import Effect.Aff (makeAff)
+import Effect.Aff.Compat (mkEffectFn1, runEffectFn1)
 import Effect.Class (class MonadEffect)
 import Effect.Ref as Ref
+import Effect.Timer (setTimeout)
 import Effect.Uncurried (EffectFn1, mkEffectFn1, runEffectFn1)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -149,16 +153,26 @@ effAction ::
   Effect a ->
   Widget v a
 effAction eff = Widget \cb -> do
-  a <- eff
-  runEffectFn1 cb (Right a)
+  void $ setTimeout 0 do
+    a <- eff
+    runEffectFn1 cb (Right a)
   pure Nothing
 
 -- Async aff
+-- Make sure that the callback is called asyncnourously
 affAction ::
   forall a v.
   WithHandler v a ->
   Widget v a
-affAction = Widget
+affAction handler = Widget \cb -> do
+  ref <- Ref.new false
+  view <- handler $ mkEffectFn1 \va -> do
+    ifM (Ref.read ref)
+      do runEffectFn1 cb va
+      do void $ setTimeout 0 $ runEffectFn1 cb va
+    pure unit
+  Ref.write true ref
+  pure view
 
 -- Async callback
 -- asyncAction
