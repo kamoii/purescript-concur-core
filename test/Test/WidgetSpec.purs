@@ -162,14 +162,13 @@ affSpec = do
     it "should handle sync-and-asynchronous callback order correctly" do
       ops <- runWidgetAsAff 100 do
         affAction \cb -> do
-          -- There is no measing of updaing view with "b"
-          -- since it the view will syncchronously updated with "c" right after
           runEffectFn1 cb $ Left "b"
           void $ setTimeout 0 $ runEffectFn1 cb $ Left "d"
           runEffectFn1 cb $ Left "c"
           pure $ Just "a"
       (ops :: Array (WidgetOp String Unit)) `shouldEqual`
         [ InitialView (Just "a")
+        , UpdateView "b"
         , UpdateView "c"
         , UpdateView "d"
         ]

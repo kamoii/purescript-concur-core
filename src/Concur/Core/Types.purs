@@ -4,6 +4,7 @@ import Prelude
 
 import Control.Alternative (class Alternative)
 import Control.Bind (ifM)
+import Control.Monad.RWS (modify_)
 import Control.MultiAlternative (class MultiAlternative, orr)
 import Control.Plus (class Alt, class Plus, alt, empty)
 import Control.ShiftMap (class ShiftMap)
@@ -163,22 +164,18 @@ effAction eff = Widget \cb -> do
 -- Make sure that the callback is called asyncnourously.
 -- Any synchronuse callback should be called before any asyncnourous call are made.
 -- There for we are calling setTimeout 0 *before* evaluating *handler*.
--- Only the last synchronusely called view udpate has effect
--- since there is no meaning of updateing the view synchronusely.
 affAction ::
   forall a v.
   WithHandler v a ->
   Widget v a
 affAction handler = Widget \cb -> do
   stillSync <- Ref.new true
-  syncView <- Ref.new Nothing
-  syncResult <- Ref.new Nothing
+  syncVas <- Ref.new []
   void $ setTimeout 0 do
-    Ref.read syncView >>= traverse_ (runEffectFn1 cb <<< Left)
-    Ref.read syncResult >>= traverse_ (runEffectFn1 cb <<< Right)
+    traverse_ (runEffectFn1 cb) =<< Ref.read syncVas
   view <- handler $ mkEffectFn1 \va -> do
     ifM (Ref.read stillSync)
-      do either (flip Ref.write syncView <<< Just) (flip Ref.write syncResult <<< Just) va
+      do Ref.modify_ (_ <> [va]) syncVas
       do runEffectFn1 cb va
     pure unit
   Ref.write false stillSync
