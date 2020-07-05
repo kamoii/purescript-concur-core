@@ -243,6 +243,27 @@ orrSpec = do
         , Result "a"
         ]
 
+    it "should cancel running effects when the widget returns a value" do
+      ref <- liftEffect $ Ref.new ""
+      ops <- runWidgetAsAff 100 do
+        orr
+          [ affWidget (Just "a") do
+               delay (Milliseconds 10.0)
+               liftEffect $ Ref.write "a" ref
+               pure "a"
+          , affWidget (Just "b") do
+               delay (Milliseconds 30.0)
+               liftEffect $ Ref.write "b" ref
+               pure "b"
+          ]
+      (ops :: Array (WidgetOp String String)) `shouldEqual`
+        [ InitialView (Just "ab")
+        , Result "a"
+        ]
+      liftEffect (Ref.read ref) `shouldReturn` "a"
+      delay (Milliseconds 25.0)
+      liftEffect (Ref.read ref) `shouldReturn` "a"
+
 anddSpec :: Spec Unit
 anddSpec = do
   describe "andd" do
@@ -282,21 +303,6 @@ anddSpec = do
         , UpdateView "a"
         ]
 
-    -- describe "orr" do
-    --   it "should cancel running effects when the widget returns a value" do
-    --     ref <- liftEffect $ Ref.new ""
-    --     { views } <- runWidgetAsAff $ orr
-    --       [ affAction "a" do
-    --            delay (Milliseconds 100.0)
-    --            liftEffect $ Ref.write "a" ref
-    --       , affAction "b" do
-    --            delay (Milliseconds 150.0)
-    --            liftEffect $ Ref.write "b" ref
-    --       ]
-    --     views `shouldEqual` [ "ab" ]
-    --     liftEffect (Ref.read ref) `shouldReturn` "a"
-    --     delay (Milliseconds 100.0)
-    --     liftEffect (Ref.read ref) `shouldReturn` "a"
 
     --   it "should start all the widgets only once" do
     --     ref <- liftEffect (Ref.new 0)
