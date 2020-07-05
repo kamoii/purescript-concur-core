@@ -28,7 +28,27 @@ import Unsafe.Coerce (unsafeCoerce)
 
 -- FAQ: What's stopping the widget from calling the handler again after having returned a value (Right a)?
 -- Ans: Discipline.
-type WithHandler v a = (EffectFn1 (Either v a) Unit) -> Effect (Maybe v)
+--
+-- * Canceller
+--
+-- The first argument is completion callback. Its called when the cancel has completed.
+-- It just not `Effect Unit` to
+--
+--   * If the canceller is invoked, it should always callback completion callback once.
+--   * The completion callback could be called back syncrounously.
+--     If there is nothing to cancel, completion callback should be called immideiatly.
+--   * Once the completion callback is called, `(EffectFn1 (Either v a) Unit)' should not yield value anymore.
+--   * canceller could be called multiple times, even for terminated widgets.
+--     Even for such cases, completion callback should be called.
+--
+-- * Exception
+--
+-- Currently doesn't handle nor have a semantics about exception.
+-- When thinking about exception, we'll need to consider how cancellation works with exception too.
+--
+type WithHandler v a =
+  (EffectFn1 (Either v a) Unit) ->
+  Effect { view :: Maybe v, canceller :: Effect Unit -> Effect Unit }
 
 mapViewWithHandler :: forall v1 v2 a. (v1 -> v2) -> WithHandler v1 a -> WithHandler v2 a
 mapViewWithHandler f w1 = \cb -> do
